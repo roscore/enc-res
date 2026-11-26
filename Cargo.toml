@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/er_core", "crates/er_web"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["enc-res contributors"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

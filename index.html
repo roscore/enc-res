@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'">
+  <meta name="description" content="Enc Res: joint encoder resolution and velocity quantization planner">
+  <title>Enc Res</title>
+  <link data-trunk rel="css" href="style.css">
+  <link data-trunk rel="rust" href="crates/er_web/Cargo.toml" data-wasm-opt="0">
+</head>
+<body data-kind="incremental">
+  <header class="bar">
+    <h1>Enc Res <small data-en="joint encoder resolution &amp; velocity quantization">관절 엔코더 분해능 · 속도 양자화</small></h1>
+    <div class="tools">
+      <label class="sr" for="preset" data-en="Preset">프리셋</label>
+      <select id="preset">
+        <option value="" data-en="Preset (illustrative)…">프리셋 (예시)…</option>
+        <option value="qdd" data-en="14-bit absolute · output · 1:9 quasi-direct">14-bit 절대형 · 출력측 · 1:9 준직구동</option>
+        <option value="harmonic" data-en="2500-line x4 incremental · motor · 1:100 harmonic">2500라인 x4 증분형 · 모터측 · 1:100 하모닉</option>
+        <option value="planetary" data-en="19-bit absolute · motor · 1:50 planetary">19-bit 절대형 · 모터측 · 1:50 유성</option>
+      </select>
+      <button type="button" data-act="pin" data-en="Pin">비교 고정</button>
+      <button type="button" data-act="unpin" id="unpin" hidden data-en="Unpin">고정 해제</button>
+      <button type="button" data-act="csv">CSV</button>
+      <button type="button" data-act="lang" aria-label="Language / 언어">KO / EN</button>
+    </div>
+  </header>
+
+  <div id="hint" class="hint" role="note">
+    <span data-en="Edit the settings cards; the plot updates live. Hover or focus the plot (arrow keys) for readouts. Pin a design to compare.">설정 카드를 바꾸면 그래프가 즉시 갱신됩니다. 그래프에 마우스를 올리거나 포커스 후 화살표 키로 값을 읽고, 설계를 고정해 비교하세요.</span>
+    <button type="button" data-act="hint" aria-label="Dismiss / 닫기">×</button>
+  </div>
+
+  <main>
+    <section class="hero" aria-label="Velocity quantization plot">
+      <div id="hud" class="hud" aria-live="polite"></div>
+      <div class="plotwrap">
+        <canvas id="plot" tabindex="0" role="img" aria-label="Velocity quantization staircase and relative error vs speed. Use arrow keys to read values."></canvas>
+        <div id="tip" class="tip" role="status" hidden></div>
+      </div>
+      <p class="legend"><i class="l-ideal"></i><span data-en="ideal">이상값</span> <i class="l-m"></i><span data-en="M-method reading / error">M법 측정·오차</span> <i class="l-band"></i><span data-en="target band">목표 오차 대역</span> <i class="l-ghost"></i><span data-en="pinned">고정 설계</span> <i class="l-work"></i><span data-en="working speed / travel per sample (dial)">작업 속도 · 샘플당 이동(다이얼)</span></p>
+    </section>
+
+    <div class="cols">
+      <aside id="settings" class="settings">
+        <button type="button" class="sheet-btn" data-act="sheet" data-en="Settings">설정</button>
+        <details open><summary data-en="Encoder">엔코더</summary>
+          <label class="f"><span data-en="Type">종류</span><select id="kind"><option value="incremental" data-en="Incremental (lines)">증분형 (라인)</option><option value="absolute" data-en="Absolute (bits)">절대형 (비트)</option></select></label>
+      <label class="f inc"><span data-en="Lines (PPR)">라인 수 (PPR)</span><input id="lines" type="number" step="any" inputmode="decimal" aria-describedby="m-lines"><small class="msg" id="m-lines" aria-live="polite"></small></label>
+          <label class="f inc"><span data-en="Decoding">디코딩</span><select id="decode" aria-describedby="m-decode"><option value="1">x1</option><option value="2">x2</option><option value="4">x4</option></select><small class="msg" id="m-decode" aria-live="polite"></small></label>
+      <label class="f abs"><span data-en="Bits">비트 수</span><input id="bits" type="number" step="any" inputmode="decimal" aria-describedby="m-bits"><small class="msg" id="m-bits" aria-live="polite"></small></label>
+          <label class="f"><span data-en="Mounting">장착 위치</span><select id="mount"><option value="motor" data-en="Motor side (before gearbox)">모터측 (감속기 앞)</option><option value="output" data-en="Output side (after gearbox)">출력측 (감속기 뒤)</option></select></label>
+      <label class="f"><span data-en="Interpolation noise (± counts RMS)">보간 노이즈 (±카운트 RMS)</span><input id="noise_counts" type="number" step="any" inputmode="decimal" aria-describedby="m-noise_counts"><small class="msg" id="m-noise_counts" aria-live="polite"></small></label>
+        </details>
+        <details open><summary data-en="Mechanics">기구</summary>
+      <label class="f"><span data-en="Gear ratio N">기어비 N</span><input id="ratio" type="number" step="any" inputmode="decimal" aria-describedby="m-ratio"><small class="msg" id="m-ratio" aria-live="polite"></small></label>
+      <label class="f"><span data-en="Backlash (arcmin)">백래시 (arcmin)</span><input id="backlash_arcmin" type="number" step="any" inputmode="decimal" aria-describedby="m-backlash_arcmin"><small class="msg" id="m-backlash_arcmin" aria-live="polite"></small></label>
+      <label class="f"><span data-en="Lever arm L (mm)">링크 길이 L (mm)</span><input id="arm_mm" type="number" step="any" inputmode="decimal" aria-describedby="m-arm_mm"><small class="msg" id="m-arm_mm" aria-live="polite"></small></label>
+        </details>
+        <details open><summary data-en="Control">제어</summary>
+      <label class="f"><span data-en="Control rate f_s (Hz)">제어 주기 f_s (Hz)</span><input id="rate_hz" type="number" step="any" inputmode="decimal" aria-describedby="m-rate_hz"><small class="msg" id="m-rate_hz" aria-live="polite"></small></label>
+          <label class="f"><span data-en="Max joint speed">최대 관절 속도</span><span class="pair"><input id="max_speed_dps" type="number" step="any" inputmode="decimal" aria-describedby="m-max_speed_dps"><select id="speed_unit" aria-label="unit"><option value="dps">deg/s</option><option value="rpm">rpm</option></select></span><small class="msg" id="m-max_speed_dps" aria-live="polite"></small></label>
+      <label class="f"><span data-en="Working speed (deg/s)">작업 속도 (deg/s)</span><input id="work_speed_dps" type="number" step="any" inputmode="decimal" aria-describedby="m-work_speed_dps"><small class="msg" id="m-work_speed_dps" aria-live="polite"></small></label>
+      <label class="f"><span data-en="Target speed error (%)">목표 속도 오차 (%)</span><input id="target_pct" type="number" step="any" inputmode="decimal" aria-describedby="m-target_pct"><small class="msg" id="m-target_pct" aria-live="polite"></small></label>
+      <label class="f inc"><span data-en="Decoder limit (Hz)">디코더 한계 (Hz)</span><input id="decoder_limit_hz" type="number" step="any" inputmode="decimal" aria-describedby="m-decoder_limit_hz"><small class="msg" id="m-decoder_limit_hz" aria-live="polite"></small></label>
+      <label class="f"><span data-en="T-method timer clock (Hz)">T법 타이머 클럭 (Hz)</span><input id="timer_hz" type="number" step="any" inputmode="decimal" aria-describedby="m-timer_hz"><small class="msg" id="m-timer_hz" aria-live="polite"></small></label>
+        </details>
+      </aside>
+
+      <section class="results" aria-label="Results">
+        <p id="state" class="state" role="alert"></p>
+        <p id="dominant" class="note"></p>
+        <p id="tnote" class="note"></p>
+        <p id="cnote" class="note"></p>
+        <div id="compare" class="compare" aria-live="polite"></div>
+        <table><thead><tr><th data-en="Quantity">항목</th><th data-en="Value">값</th><th data-en="Unit">단위</th></tr></thead><tbody id="rows"></tbody></table>
+        <p class="disclaimer" data-en="Planning estimate only. Not modelled: encoder accuracy (INL, eccentricity), shaft wind-up, gearbox transmission error, filtering (observers/PLL) and latency. Measure on the real joint. Presets are synthetic and illustrative.">계획용 추정치입니다. 엔코더 정확도(INL, 편심), 축 비틀림, 감속기 전달 오차, 필터링(관측기/PLL)과 지연은 모델링하지 않습니다. 실제 관절에서 측정하세요. 프리셋은 가상의 예시 값입니다.</p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
